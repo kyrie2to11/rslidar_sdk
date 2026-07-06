@@ -477,13 +477,23 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   std::string ros_send_topic;
   yamlRead<std::string>(config["ros"], 
       "ros_send_point_cloud_topic", ros_send_topic, "rslidar_points");
+  std::string ros_node_name;
+  yamlRead<std::string>(config["ros"], "ros_node_name", ros_node_name, "");
 
   size_t ros_queue_length;
   yamlRead<size_t>(config["ros"], "ros_queue_length", ros_queue_length, 100);
 
   std::stringstream node_name;
-  node_name << "rslidar_points_destination_" << pointCloudTopicToNodeSuffix(ros_send_topic);
-  if (ros_send_topic.empty()) node_name << "_unknown";
+  node_name << "rslidar_points_destination_";
+  if (!ros_node_name.empty())
+  {
+    node_name << ros_node_name;
+  }
+  else
+  {
+    node_name << pointCloudTopicToNodeSuffix(ros_send_topic);
+    if (ros_send_topic.empty()) node_name << "_unknown";
+  }
 
   node_ptr_.reset(new rclcpp::Node(node_name.str()));
 

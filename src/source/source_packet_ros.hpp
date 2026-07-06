@@ -282,10 +282,20 @@ void SourcePacketRos::init(const YAML::Node& config)
   std::string ros_recv_topic;
   yamlRead<std::string>(config["ros"], "ros_recv_packet_topic",
       ros_recv_topic, "rslidar_packets");
+  std::string ros_node_name;
+  yamlRead<std::string>(config["ros"], "ros_node_name", ros_node_name, "");
 
   std::stringstream node_name;
-  node_name << "rslidar_packets_source_" << packetTopicToNodeSuffix(ros_recv_topic);
-  if (ros_recv_topic.empty()) node_name << "_unknown";
+  node_name << "rslidar_packets_source_";
+  if (!ros_node_name.empty())
+  {
+    node_name << ros_node_name;
+  }
+  else
+  {
+    node_name << packetTopicToNodeSuffix(ros_recv_topic);
+    if (ros_recv_topic.empty()) node_name << "_unknown";
+  }
 
   node_ptr_.reset(new rclcpp::Node(node_name.str()));
   pkt_sub_ = node_ptr_->create_subscription<rslidar_msg::msg::RslidarPacket>(ros_recv_topic, 100, 
@@ -339,13 +349,23 @@ inline void DestinationPacketRos::init(const YAML::Node& config)
   std::string ros_send_topic;
   yamlRead<std::string>(config["ros"], "ros_send_packet_topic", 
       ros_send_topic, "rslidar_packets");
+  std::string ros_node_name;
+  yamlRead<std::string>(config["ros"], "ros_node_name", ros_node_name, "");
 
   size_t ros_queue_length;
   yamlRead<size_t>(config["ros"], "ros_queue_length", ros_queue_length, 100);
 
   static int node_index = 0;
   std::stringstream node_name;
-  node_name << "rslidar_packets_destination_" << node_index++;
+  node_name << "rslidar_packets_destination_";
+  if (!ros_node_name.empty())
+  {
+    node_name << ros_node_name;
+  }
+  else
+  {
+    node_name << node_index++;
+  }
 
   node_ptr_.reset(new rclcpp::Node(node_name.str()));
   pkt_pub_ = node_ptr_->create_publisher<rslidar_msg::msg::RslidarPacket>(ros_send_topic, ros_queue_length);

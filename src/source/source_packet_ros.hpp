@@ -297,6 +297,8 @@ void SourcePacketRos::init(const YAML::Node& config)
     if (ros_recv_topic.empty()) node_name << "_unknown";
   }
 
+  // Keep this helper node immune to launch-level "__node:=..." remaps so the
+  // ROS graph exposes one unique node per LiDAR instance.
   rclcpp::NodeOptions node_options;
   node_options.use_global_arguments(false);
   node_ptr_.reset(new rclcpp::Node(node_name.str(), node_options));
@@ -369,6 +371,8 @@ inline void DestinationPacketRos::init(const YAML::Node& config)
     node_name << node_index++;
   }
 
+  // Keep this helper node immune to launch-level "__node:=..." remaps so the
+  // ROS graph exposes one unique node per LiDAR instance.
   rclcpp::NodeOptions node_options;
   node_options.use_global_arguments(false);
   node_ptr_.reset(new rclcpp::Node(node_name.str(), node_options));

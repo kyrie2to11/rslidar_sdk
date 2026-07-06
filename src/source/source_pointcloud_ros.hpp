@@ -495,6 +495,9 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
     if (ros_send_topic.empty()) node_name << "_unknown";
   }
 
+  // Launch files often inject a global "__node:=..." remap. Disable global
+  // arguments here so each helper node keeps its own instance-specific name
+  // instead of collapsing into the launch node name.
   rclcpp::NodeOptions node_options;
   node_options.use_global_arguments(false);
   node_ptr_.reset(new rclcpp::Node(node_name.str(), node_options));

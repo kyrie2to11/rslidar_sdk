@@ -141,6 +141,12 @@ ros2 launch rslidar_sdk start.py
 
 不同ROS2版本start.py的格式可能不同，请使用对应版本的start.py。如ROS2 Elequent，请使用elequent_start.py。
 
+### 1.4.3 ROS2 多雷达启动说明
+
+当一个 ROS2 launch 进程内部创建多个 `rclcpp::Node` 时，launch 可能会向该进程注入全局的 `__node:=...` remap。这个行为对单节点示例没有问题，但在多雷达场景下会把内部 helper node 全部压成同一个可见节点名，导致 `ros2 node list` 里出现重复名称。
+
+本仓库里的 `rslidar_sdk` 对内部 helper node 显式关闭了 global launch arguments，并从 YAML 中读取每台雷达的实例名来生成唯一节点名。这样既保留主参数节点的 `config_path` 传参，又能让 ROS graph 保持可读且不重名。
+
 ## 1.5 参数介绍
 
 rslidar_sdk的功能通过配置参数文件来实现，请仔细阅读。

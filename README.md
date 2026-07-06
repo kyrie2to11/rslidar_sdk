@@ -143,6 +143,12 @@ ros2 launch rslidar_sdk start.py
 
 Another version of start.py may be used, since it is different on different versios of ROS2. For example, elequent_start.py is used instead for ROS2 elequent.
 
+### 4.3 ROS2 launch note for multi-LiDAR bring-up
+
+When a ROS2 launch file starts multiple helper nodes inside a single process, ROS2 may inject a global `__node:=...` remap into every `rclcpp::Node` created in that process. That is convenient for simple single-node demos, but it collapses all internal helper nodes into the same visible node name in `ros2 node list`.
+
+For the multi-LiDAR bring-up in this repository, `rslidar_sdk` explicitly disables global launch arguments for its internal helper nodes and assigns each LiDAR instance a unique instance name from the YAML config. This keeps the ROS graph readable and prevents duplicate node names while preserving the launch-time `config_path` parameter on the main parameter node.
+
 ## 5 Introduction to parameters
 
 To change behaviors of rslidar_sdk, change its parameters. please read the following links for detail information.

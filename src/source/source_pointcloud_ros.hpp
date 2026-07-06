@@ -495,7 +495,9 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
     if (ros_send_topic.empty()) node_name << "_unknown";
   }
 
-  node_ptr_.reset(new rclcpp::Node(node_name.str()));
+  rclcpp::NodeOptions node_options;
+  node_options.use_global_arguments(false);
+  node_ptr_.reset(new rclcpp::Node(node_name.str(), node_options));
 
   pub_ = node_ptr_->create_publisher<sensor_msgs::msg::PointCloud2>(ros_send_topic, ros_queue_length);
 

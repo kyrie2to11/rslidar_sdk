@@ -297,7 +297,9 @@ void SourcePacketRos::init(const YAML::Node& config)
     if (ros_recv_topic.empty()) node_name << "_unknown";
   }
 
-  node_ptr_.reset(new rclcpp::Node(node_name.str()));
+  rclcpp::NodeOptions node_options;
+  node_options.use_global_arguments(false);
+  node_ptr_.reset(new rclcpp::Node(node_name.str(), node_options));
   pkt_sub_ = node_ptr_->create_subscription<rslidar_msg::msg::RslidarPacket>(ros_recv_topic, 100, 
       std::bind(&SourcePacketRos::putPacket, this, std::placeholders::_1));
   subscription_spin_thread_ = std::thread(std::bind(&SourcePacketRos::spin,this));
@@ -367,7 +369,9 @@ inline void DestinationPacketRos::init(const YAML::Node& config)
     node_name << node_index++;
   }
 
-  node_ptr_.reset(new rclcpp::Node(node_name.str()));
+  rclcpp::NodeOptions node_options;
+  node_options.use_global_arguments(false);
+  node_ptr_.reset(new rclcpp::Node(node_name.str(), node_options));
   pkt_pub_ = node_ptr_->create_publisher<rslidar_msg::msg::RslidarPacket>(ros_send_topic, ros_queue_length);
 }
 

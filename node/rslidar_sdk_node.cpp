@@ -93,9 +93,7 @@ int main(int argc, char** argv)
   std::string path;
   priv_hh.param("config_path", path, std::string(""));
 #elif ROS2_FOUND
-  rclcpp::NodeOptions param_options;
-  param_options.use_global_arguments(false);
-  std::shared_ptr<rclcpp::Node> nd = rclcpp::Node::make_shared("param_handle", param_options);
+  std::shared_ptr<rclcpp::Node> nd = rclcpp::Node::make_shared("param_handle");
   std::string path = nd->declare_parameter<std::string>("config_path", "");
 #endif
 

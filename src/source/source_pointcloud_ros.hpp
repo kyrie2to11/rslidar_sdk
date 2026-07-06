@@ -231,7 +231,7 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
       "ros_frame_id", frame_id_, "rslidar");
 
   std::string ros_send_topic;
-  yamlRead<std::string>(config["ros"], 
+  yamlRead<std::string>(config["ros"],
       "ros_send_point_cloud_topic", ros_send_topic, "rslidar_points");
 
 
@@ -273,6 +273,20 @@ namespace robosense
 {
 namespace lidar
 {
+
+inline std::string pointCloudTopicToNodeSuffix(const std::string & topic)
+{
+  const auto pos = topic.find_last_of('/');
+  if (pos == std::string::npos)
+  {
+    return topic.empty() ? "unknown" : topic;
+  }
+  if (pos + 1 >= topic.size())
+  {
+    return "unknown";
+  }
+  return topic.substr(pos + 1);
+}
 
 inline sensor_msgs::msg::PointCloud2 toRosMsg(const LidarPointCloudMsg& rs_msg, const std::string& frame_id, bool send_by_rows)
 {
@@ -467,9 +481,9 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   size_t ros_queue_length;
   yamlRead<size_t>(config["ros"], "ros_queue_length", ros_queue_length, 100);
 
-  static int node_index = 0;
   std::stringstream node_name;
-  node_name << "rslidar_points_destination_" << node_index++;
+  node_name << "rslidar_points_destination_" << pointCloudTopicToNodeSuffix(ros_send_topic);
+  if (ros_send_topic.empty()) node_name << "_unknown";
 
   node_ptr_.reset(new rclcpp::Node(node_name.str()));
 
@@ -498,4 +512,3 @@ inline void DestinationPointCloudRos::sendImuData(const std::shared_ptr<ImuData>
 }  // namespace robosense
 
 #endif
-

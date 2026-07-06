@@ -224,6 +224,20 @@ namespace robosense
 namespace lidar
 {
 
+inline std::string packetTopicToNodeSuffix(const std::string & topic)
+{
+  const auto pos = topic.find_last_of('/');
+  if (pos == std::string::npos)
+  {
+    return topic.empty() ? "unknown" : topic;
+  }
+  if (pos + 1 >= topic.size())
+  {
+    return "unknown";
+  }
+  return topic.substr(pos + 1);
+}
+
 inline Packet toRsMsg(const rslidar_msg::msg::RslidarPacket& ros_msg)
 {
   Packet rs_msg;
@@ -266,12 +280,12 @@ void SourcePacketRos::init(const YAML::Node& config)
   SourceDriver::init(config);
 
   std::string ros_recv_topic;
-  yamlRead<std::string>(config["ros"], "ros_recv_packet_topic", 
+  yamlRead<std::string>(config["ros"], "ros_recv_packet_topic",
       ros_recv_topic, "rslidar_packets");
 
-  static int node_index = 0;
   std::stringstream node_name;
-  node_name << "rslidar_packets_source_" << node_index++;
+  node_name << "rslidar_packets_source_" << packetTopicToNodeSuffix(ros_recv_topic);
+  if (ros_recv_topic.empty()) node_name << "_unknown";
 
   node_ptr_.reset(new rclcpp::Node(node_name.str()));
   pkt_sub_ = node_ptr_->create_subscription<rslidar_msg::msg::RslidarPacket>(ros_recv_topic, 100, 
@@ -346,5 +360,3 @@ inline void DestinationPacketRos::sendPacket(const Packet& msg)
 }  // namespace robosense
 
 #endif  // ROS2_FOUND
-
-

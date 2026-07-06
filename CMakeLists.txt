@@ -5,7 +5,10 @@ project(rslidar_sdk)
 #=======================================
 # Custom Point Type (XYZI,XYZIRT, XYZIF, XYZIRTF)
 #=======================================
-set(POINT_TYPE XYZI)
+if(NOT DEFINED POINT_TYPE)
+  set(POINT_TYPE XYZI CACHE STRING "Custom point type for RoboSense LiDAR SDK")
+endif()
+set_property(CACHE POINT_TYPE PROPERTY STRINGS XYZI XYZIRT XYZIF XYZIRTF)
 
 option(ENABLE_TRANSFORM "Enable transform functions" OFF)
 if(${ENABLE_TRANSFORM})
@@ -206,4 +209,3 @@ if(rclcpp_FOUND)
   ament_package()
 
 endif(rclcpp_FOUND)
-

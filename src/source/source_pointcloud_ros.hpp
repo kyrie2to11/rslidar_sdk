@@ -187,13 +187,20 @@ sensor_msgs::Imu toRosMsg(const std::shared_ptr<ImuData>& data, const std::strin
   imu_msg.header.stamp = imu_msg.header.stamp.fromSec(data->timestamp);
   imu_msg.header.frame_id = frame_id;
   // Set IMU data
+  // Airy IMU 本体系为 NED（X前/Y右/Z下），ROS/IEKF 需 FLU（X前/Y左/Z上）：
+  // 绕 X 转 180°——陀螺与加速度的 y、z 取反（参考 Ilyes robosense_fast_lio RS-Airy 分支
+  // laserMapping.cpp 的 imu_cbk：仅 RSAIRY 做此变换）。加速度另需 G→m/s²（×g）。
+  // 注意：此变换对 Airy/E1 内置 IMU 成立；若换用其它已为 FLU 的雷达需移除。
+  constexpr double kImuGravity = 9.80665;
   imu_msg.angular_velocity.x = data->angular_velocity_x;
-  imu_msg.angular_velocity.y = data->angular_velocity_y;
-  imu_msg.angular_velocity.z = data->angular_velocity_z;
-
-  imu_msg.linear_acceleration.x = data->linear_acceleration_x;
-  imu_msg.linear_acceleration.y = data->linear_acceleration_y;
-  imu_msg.linear_acceleration.z = data->linear_acceleration_z;
+  imu_msg.angular_velocity.y = -data->angular_velocity_y;
+  imu_msg.angular_velocity.z = -data->angular_velocity_z;
+  imu_msg.linear_acceleration.x = data->linear_acceleration_x * kImuGravity;
+  imu_msg.linear_acceleration.y = -data->linear_acceleration_y * kImuGravity;
+  imu_msg.linear_acceleration.z = -data->linear_acceleration_z * kImuGravity;
+  // 本驱动不提供朝向估计（orientation 保持默认 identity），按 REP-145 置 -1 表示"无朝向"，
+  // 避免下游（如 polka）误用 identity 朝向减重力、导致平移去畸变失真。
+  imu_msg.orientation_covariance[0] = -1.0;
   return imu_msg;
 }
 #endif
@@ -430,13 +437,20 @@ sensor_msgs::msg::Imu toRosMsg(const std::shared_ptr<ImuData>& data, const std::
   imu_msg.header.stamp = rclcpp::Time(static_cast<uint64_t>(data->timestamp * 1e9));
   imu_msg.header.frame_id = frame_id;
   // Set IMU data
+  // Airy IMU 本体系为 NED（X前/Y右/Z下），ROS/IEKF 需 FLU（X前/Y左/Z上）：
+  // 绕 X 转 180°——陀螺与加速度的 y、z 取反（参考 Ilyes robosense_fast_lio RS-Airy 分支
+  // laserMapping.cpp 的 imu_cbk：仅 RSAIRY 做此变换）。加速度另需 G→m/s²（×g）。
+  // 注意：此变换对 Airy/E1 内置 IMU 成立；若换用其它已为 FLU 的雷达需移除。
+  constexpr double kImuGravity = 9.80665;
   imu_msg.angular_velocity.x = data->angular_velocity_x;
-  imu_msg.angular_velocity.y = data->angular_velocity_y;
-  imu_msg.angular_velocity.z = data->angular_velocity_z;
-
-  imu_msg.linear_acceleration.x = data->linear_acceleration_x;
-  imu_msg.linear_acceleration.y = data->linear_acceleration_y;
-  imu_msg.linear_acceleration.z = data->linear_acceleration_z;
+  imu_msg.angular_velocity.y = -data->angular_velocity_y;
+  imu_msg.angular_velocity.z = -data->angular_velocity_z;
+  imu_msg.linear_acceleration.x = data->linear_acceleration_x * kImuGravity;
+  imu_msg.linear_acceleration.y = -data->linear_acceleration_y * kImuGravity;
+  imu_msg.linear_acceleration.z = -data->linear_acceleration_z * kImuGravity;
+  // 本驱动不提供朝向估计（orientation 保持默认 identity），按 REP-145 置 -1 表示"无朝向"，
+  // 避免下游（如 polka）误用 identity 朝向减重力、导致平移去畸变失真。
+  imu_msg.orientation_covariance[0] = -1.0;
   return imu_msg;
 }
 #endif

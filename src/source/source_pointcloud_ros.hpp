@@ -221,7 +221,7 @@ private:
   ros::Publisher pub_; 
 #ifdef ENABLE_IMU_DATA_PARSE
   ros::Publisher imu_pub_;
-  bool imu_ned_frame_ = false;  // Airy/E1 内置 IMU 为 NED，需 NED->FLU 翻转
+  bool imu_ned_frame_ = false;  // 是否将 IMU 原始 NED 轴翻转为 ROS FLU。
 #endif
   std::string frame_id_;
   bool send_by_rows_;
@@ -255,8 +255,10 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   imu_pub_ = nh_->advertise<sensor_msgs::Imu>(ros_send_imu_data_topic, 1000);
   std::string lidar_type;
   yamlRead<std::string>(config["driver"], "lidar_type", lidar_type, "");
-  // 仅 Airy/E1 内置 IMU 为 NED 极性，需要 NED->FLU 翻转；其它雷达保持原轴。
-  imu_ned_frame_ = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
+  // 默认保持历史行为：Airy/E1 内置 IMU 按 NED->FLU 翻转；可由配置显式关闭，
+  // 以便下游直接使用 DIFOP 中 IMU->LiDAR 的完整外参。
+  const bool default_imu_ned_to_flu = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
+  yamlRead<bool>(config["ros"], "ros_imu_ned_to_flu", imu_ned_frame_, default_imu_ned_to_flu);
 #endif
 }
 
@@ -479,7 +481,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_;
 #ifdef ENABLE_IMU_DATA_PARSE
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
-  bool imu_ned_frame_ = false;  // Airy/E1 内置 IMU 为 NED，需 NED->FLU 翻转
+  bool imu_ned_frame_ = false;  // 是否将 IMU 原始 NED 轴翻转为 ROS FLU。
 #endif
   std::string frame_id_;
   bool send_by_rows_;
@@ -535,8 +537,10 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   imu_pub_ = node_ptr_->create_publisher<sensor_msgs::msg::Imu>(ros_send_imu_data_topic, 1000);
   std::string lidar_type;
   yamlRead<std::string>(config["driver"], "lidar_type", lidar_type, "");
-  // 仅 Airy/E1 内置 IMU 为 NED 极性，需要 NED->FLU 翻转；其它雷达保持原轴。
-  imu_ned_frame_ = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
+  // 默认保持历史行为：Airy/E1 内置 IMU 按 NED->FLU 翻转；可由配置显式关闭，
+  // 以便下游直接使用 DIFOP 中 IMU->LiDAR 的完整外参。
+  const bool default_imu_ned_to_flu = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
+  yamlRead<bool>(config["ros"], "ros_imu_ned_to_flu", imu_ned_frame_, default_imu_ned_to_flu);
 #endif
 
 }

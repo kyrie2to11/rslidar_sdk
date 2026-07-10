@@ -180,24 +180,26 @@ inline sensor_msgs::PointCloud2 toRosMsg(const LidarPointCloudMsg& rs_msg, const
   return ros_msg;
 }
 #ifdef ENABLE_IMU_DATA_PARSE
-sensor_msgs::Imu toRosMsg(const std::shared_ptr<ImuData>& data, const std::string& frame_id)
+sensor_msgs::Imu toRosMsg(const std::shared_ptr<ImuData>& data, const std::string& frame_id, bool ned_to_flu = false)
 {
   sensor_msgs::Imu imu_msg;
 
   imu_msg.header.stamp = imu_msg.header.stamp.fromSec(data->timestamp);
   imu_msg.header.frame_id = frame_id;
   // Set IMU data
-  // Airy IMU 本体系为 NED（X前/Y右/Z下），ROS/IEKF 需 FLU（X前/Y左/Z上）：
-  // 绕 X 转 180°——陀螺与加速度的 y、z 取反（参考 Ilyes robosense_fast_lio RS-Airy 分支
-  // laserMapping.cpp 的 imu_cbk：仅 RSAIRY 做此变换）。加速度另需 G→m/s²（×g）。
-  // 注意：此变换对 Airy/E1 内置 IMU 成立；若换用其它已为 FLU 的雷达需移除。
+  // 加速度 rs_driver 原始单位为 g，ROS Imu 约定为 m/s²，统一 ×9.80665（所有雷达适用）。
+  // Airy/E1 内置 IMU 本体系为 NED（X前/Y右/Z下），ROS/IEKF 需 FLU（X前/Y左/Z上），
+  // 即绕 X 转 180°：陀螺与加速度的 y、z 取反（参考 Ilyes robosense_fast_lio RS-Airy 分支
+  // laserMapping.cpp 的 imu_cbk）。该翻转仅对 NED 极性的内置 IMU 成立，故由调用方按
+  // lidar_type 传入 ned_to_flu 开关，避免对已为 FLU 的雷达误翻转。
   constexpr double kImuGravity = 9.80665;
+  const double s = ned_to_flu ? -1.0 : 1.0;
   imu_msg.angular_velocity.x = data->angular_velocity_x;
-  imu_msg.angular_velocity.y = -data->angular_velocity_y;
-  imu_msg.angular_velocity.z = -data->angular_velocity_z;
+  imu_msg.angular_velocity.y = data->angular_velocity_y * s;
+  imu_msg.angular_velocity.z = data->angular_velocity_z * s;
   imu_msg.linear_acceleration.x = data->linear_acceleration_x * kImuGravity;
-  imu_msg.linear_acceleration.y = -data->linear_acceleration_y * kImuGravity;
-  imu_msg.linear_acceleration.z = -data->linear_acceleration_z * kImuGravity;
+  imu_msg.linear_acceleration.y = data->linear_acceleration_y * s * kImuGravity;
+  imu_msg.linear_acceleration.z = data->linear_acceleration_z * s * kImuGravity;
   // 本驱动不提供朝向估计（orientation 保持默认 identity），按 REP-145 置 -1 表示"无朝向"，
   // 避免下游（如 polka）误用 identity 朝向减重力、导致平移去畸变失真。
   imu_msg.orientation_covariance[0] = -1.0;
@@ -218,7 +220,8 @@ private:
   std::shared_ptr<ros::NodeHandle> nh_;
   ros::Publisher pub_; 
 #ifdef ENABLE_IMU_DATA_PARSE
-  ros::Publisher imu_pub_; 
+  ros::Publisher imu_pub_;
+  bool imu_ned_frame_ = false;  // Airy/E1 内置 IMU 为 NED，需 NED->FLU 翻转
 #endif
   std::string frame_id_;
   bool send_by_rows_;
@@ -250,6 +253,10 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   yamlRead<std::string>(config["ros"], 
       "ros_send_imu_data_topic", ros_send_imu_data_topic, "rslidar_imu_data");
   imu_pub_ = nh_->advertise<sensor_msgs::Imu>(ros_send_imu_data_topic, 1000);
+  std::string lidar_type;
+  yamlRead<std::string>(config["driver"], "lidar_type", lidar_type, "");
+  // 仅 Airy/E1 内置 IMU 为 NED 极性，需要 NED->FLU 翻转；其它雷达保持原轴。
+  imu_ned_frame_ = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
 #endif
 }
 
@@ -260,7 +267,7 @@ inline void DestinationPointCloudRos::sendPointCloud(const LidarPointCloudMsg& m
 #ifdef ENABLE_IMU_DATA_PARSE
 inline void DestinationPointCloudRos::sendImuData(const std::shared_ptr<ImuData> & data)
 {
-  imu_pub_.publish(toRosMsg(data, frame_id_));
+  imu_pub_.publish(toRosMsg(data, frame_id_, imu_ned_frame_));
 }
 #endif
 }  // namespace lidar
@@ -430,24 +437,26 @@ inline sensor_msgs::msg::PointCloud2 toRosMsg(const LidarPointCloudMsg& rs_msg, 
   return ros_msg;
 }
 #ifdef ENABLE_IMU_DATA_PARSE
-sensor_msgs::msg::Imu toRosMsg(const std::shared_ptr<ImuData>& data, const std::string& frame_id)
+sensor_msgs::msg::Imu toRosMsg(const std::shared_ptr<ImuData>& data, const std::string& frame_id, bool ned_to_flu = false)
 {
   sensor_msgs::msg::Imu imu_msg;
 
   imu_msg.header.stamp = rclcpp::Time(static_cast<uint64_t>(data->timestamp * 1e9));
   imu_msg.header.frame_id = frame_id;
   // Set IMU data
-  // Airy IMU 本体系为 NED（X前/Y右/Z下），ROS/IEKF 需 FLU（X前/Y左/Z上）：
-  // 绕 X 转 180°——陀螺与加速度的 y、z 取反（参考 Ilyes robosense_fast_lio RS-Airy 分支
-  // laserMapping.cpp 的 imu_cbk：仅 RSAIRY 做此变换）。加速度另需 G→m/s²（×g）。
-  // 注意：此变换对 Airy/E1 内置 IMU 成立；若换用其它已为 FLU 的雷达需移除。
+  // 加速度 rs_driver 原始单位为 g，ROS Imu 约定为 m/s²，统一 ×9.80665（所有雷达适用）。
+  // Airy/E1 内置 IMU 本体系为 NED（X前/Y右/Z下），ROS/IEKF 需 FLU（X前/Y左/Z上），
+  // 即绕 X 转 180°：陀螺与加速度的 y、z 取反（参考 Ilyes robosense_fast_lio RS-Airy 分支
+  // laserMapping.cpp 的 imu_cbk）。该翻转仅对 NED 极性的内置 IMU 成立，故由调用方按
+  // lidar_type 传入 ned_to_flu 开关，避免对已为 FLU 的雷达误翻转。
   constexpr double kImuGravity = 9.80665;
+  const double s = ned_to_flu ? -1.0 : 1.0;
   imu_msg.angular_velocity.x = data->angular_velocity_x;
-  imu_msg.angular_velocity.y = -data->angular_velocity_y;
-  imu_msg.angular_velocity.z = -data->angular_velocity_z;
+  imu_msg.angular_velocity.y = data->angular_velocity_y * s;
+  imu_msg.angular_velocity.z = data->angular_velocity_z * s;
   imu_msg.linear_acceleration.x = data->linear_acceleration_x * kImuGravity;
-  imu_msg.linear_acceleration.y = -data->linear_acceleration_y * kImuGravity;
-  imu_msg.linear_acceleration.z = -data->linear_acceleration_z * kImuGravity;
+  imu_msg.linear_acceleration.y = data->linear_acceleration_y * s * kImuGravity;
+  imu_msg.linear_acceleration.z = data->linear_acceleration_z * s * kImuGravity;
   // 本驱动不提供朝向估计（orientation 保持默认 identity），按 REP-145 置 -1 表示"无朝向"，
   // 避免下游（如 polka）误用 identity 朝向减重力、导致平移去畸变失真。
   imu_msg.orientation_covariance[0] = -1.0;
@@ -470,6 +479,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_;
 #ifdef ENABLE_IMU_DATA_PARSE
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  bool imu_ned_frame_ = false;  // Airy/E1 内置 IMU 为 NED，需 NED->FLU 翻转
 #endif
   std::string frame_id_;
   bool send_by_rows_;
@@ -523,6 +533,10 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   yamlRead<std::string>(config["ros"], 
       "ros_send_imu_data_topic", ros_send_imu_data_topic, "rslidar_imu_data");
   imu_pub_ = node_ptr_->create_publisher<sensor_msgs::msg::Imu>(ros_send_imu_data_topic, 1000);
+  std::string lidar_type;
+  yamlRead<std::string>(config["driver"], "lidar_type", lidar_type, "");
+  // 仅 Airy/E1 内置 IMU 为 NED 极性，需要 NED->FLU 翻转；其它雷达保持原轴。
+  imu_ned_frame_ = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
 #endif
 
 }
@@ -534,7 +548,7 @@ inline void DestinationPointCloudRos::sendPointCloud(const LidarPointCloudMsg& m
 #ifdef ENABLE_IMU_DATA_PARSE
 inline void DestinationPointCloudRos::sendImuData(const std::shared_ptr<ImuData> & data)
 {
-  imu_pub_->publish(toRosMsg(data, frame_id_));
+  imu_pub_->publish(toRosMsg(data, frame_id_, imu_ned_frame_));
 }
 #endif
 }  // namespace lidar

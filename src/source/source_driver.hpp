@@ -72,6 +72,8 @@ protected:
   SyncQueue<std::shared_ptr<ImuData>> free_imu_data_queue_;
   SyncQueue<std::shared_ptr<ImuData>> imu_data_queue_;
   std::thread imu_data_process_thread_;
+  bool publish_imu_tf_ = false;
+  bool imu_tf_sent_ = false;
 #endif
   std::thread point_cloud_process_thread_;
   bool to_exit_process_;
@@ -106,6 +108,12 @@ inline void SourceDriver::init(const YAML::Node& config)
   std::string lidar_type;
   yamlReadAbort<std::string>(driver_config, "lidar_type", lidar_type);
   driver_param.lidar_type = strToLidarType(lidar_type);
+
+#ifdef ENABLE_IMU_DATA_PARSE
+  const bool default_publish_imu_tf = (lidar_type == "RSAIRY");
+  yamlRead<bool>(config["ros"], "ros_publish_imu_tf", publish_imu_tf_, default_publish_imu_tf);
+  imu_tf_sent_ = false;
+#endif
 
   // decoder
   yamlRead<bool>(driver_config, "wait_for_difop", driver_param.decoder_param.wait_for_difop, true);
@@ -250,6 +258,17 @@ void SourceDriver::processImuData()
     if (msg.get() == NULL)
     {
       continue;
+    }
+    if (publish_imu_tf_ && !imu_tf_sent_)
+    {
+      DeviceInfo info;
+      if (!driver_ptr_->getDeviceInfo(info))
+      {
+        free_imu_data_queue_.push(msg);
+        continue;
+      }
+      sendImuTransform(info);
+      imu_tf_sent_ = true;
     }
     sendImuData(msg);
 

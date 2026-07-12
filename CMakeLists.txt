@@ -142,9 +142,11 @@ if(rclcpp_FOUND)
   set(CMAKE_CXX_STANDARD 14)
 
   find_package(ament_cmake REQUIRED)
+  find_package(geometry_msgs REQUIRED)
   find_package(sensor_msgs REQUIRED)
   find_package(rslidar_msg REQUIRED)
   find_package(std_msgs REQUIRED)                      
+  find_package(tf2_ros REQUIRED)
 
 else(rclcpp_FOUND)
   message(=============================================================)
@@ -193,9 +195,11 @@ if(rclcpp_FOUND)
 
   ament_target_dependencies(rslidar_sdk_node 
     rclcpp 
+    geometry_msgs
     std_msgs 
     sensor_msgs 
-    rslidar_msg)
+    rslidar_msg
+    tf2_ros)
 
   install(TARGETS
     rslidar_sdk_node
@@ -205,6 +209,15 @@ if(rclcpp_FOUND)
     launch
     rviz
     DESTINATION share/${PROJECT_NAME})
+
+  if(BUILD_TESTING)
+    find_package(ament_cmake_gtest REQUIRED)
+    ament_add_gtest(test_imu_extrinsics
+      test/test_imu_extrinsics.cpp)
+    target_include_directories(test_imu_extrinsics PRIVATE
+      ${PROJECT_SOURCE_DIR}/src
+      ${rs_driver_INCLUDE_DIRS})
+  endif()
 
   ament_package()
 

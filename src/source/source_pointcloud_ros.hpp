@@ -32,6 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#include "source/imu_extrinsics.hpp"
 #include "source/source.hpp"
 
 #ifdef ROS_FOUND
@@ -215,6 +216,7 @@ public:
   virtual ~DestinationPointCloudRos() = default;
 #ifdef ENABLE_IMU_DATA_PARSE
   virtual void sendImuData(const std::shared_ptr<ImuData> & data);
+  virtual void sendImuTransform(const DeviceInfo& info) {}
 #endif
 private:
   std::shared_ptr<ros::NodeHandle> nh_;
@@ -222,8 +224,9 @@ private:
 #ifdef ENABLE_IMU_DATA_PARSE
   ros::Publisher imu_pub_;
   bool imu_ned_frame_ = false;  // 是否将 IMU 原始 NED 轴翻转为 ROS FLU。
+  std::string imu_frame_id_;
 #endif
-  std::string frame_id_;
+  std::string lidar_frame_id_;
   bool send_by_rows_;
 };
 
@@ -237,8 +240,10 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   if (dense_points)
     send_by_rows_ = false;
 
-  yamlRead<std::string>(config["ros"], 
-      "ros_frame_id", frame_id_, "rslidar");
+  if (!yamlRead<std::string>(config["ros"], "ros_lidar_frame_id", lidar_frame_id_, ""))
+  {
+    yamlRead<std::string>(config["ros"], "ros_frame_id", lidar_frame_id_, "rslidar");
+  }
 
   std::string ros_send_topic;
   yamlRead<std::string>(config["ros"],
@@ -255,21 +260,19 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   imu_pub_ = nh_->advertise<sensor_msgs::Imu>(ros_send_imu_data_topic, 1000);
   std::string lidar_type;
   yamlRead<std::string>(config["driver"], "lidar_type", lidar_type, "");
-  // 默认保持历史行为：Airy/E1 内置 IMU 按 NED->FLU 翻转；可由配置显式关闭，
-  // 以便下游直接使用 DIFOP 中 IMU->LiDAR 的完整外参。
-  const bool default_imu_ned_to_flu = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
-  yamlRead<bool>(config["ros"], "ros_imu_ned_to_flu", imu_ned_frame_, default_imu_ned_to_flu);
+  yamlRead<std::string>(config["ros"], "ros_imu_frame_id", imu_frame_id_, lidar_frame_id_);
+  yamlRead<bool>(config["ros"], "ros_imu_ned_to_flu", imu_ned_frame_, false);
 #endif
 }
 
 inline void DestinationPointCloudRos::sendPointCloud(const LidarPointCloudMsg& msg)
 {
-  pub_.publish(toRosMsg(msg, frame_id_, send_by_rows_));
+  pub_.publish(toRosMsg(msg, lidar_frame_id_, send_by_rows_));
 }
 #ifdef ENABLE_IMU_DATA_PARSE
 inline void DestinationPointCloudRos::sendImuData(const std::shared_ptr<ImuData> & data)
 {
-  imu_pub_.publish(toRosMsg(data, frame_id_, imu_ned_frame_));
+  imu_pub_.publish(toRosMsg(data, imu_frame_id_, imu_ned_frame_));
 }
 #endif
 }  // namespace lidar
@@ -281,7 +284,9 @@ inline void DestinationPointCloudRos::sendImuData(const std::shared_ptr<ImuData>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #ifdef ENABLE_IMU_DATA_PARSE
+  #include <geometry_msgs/msg/transform_stamped.hpp>
   #include <sensor_msgs/msg/imu.hpp>
+  #include <tf2_ros/static_transform_broadcaster.h>
 #endif
 #include <sstream>
 
@@ -473,6 +478,7 @@ public:
   virtual void sendPointCloud(const LidarPointCloudMsg& msg);
 #ifdef ENABLE_IMU_DATA_PARSE
   virtual void sendImuData(const std::shared_ptr<ImuData> & data);
+  virtual void sendImuTransform(const DeviceInfo& info);
 #endif
   virtual ~DestinationPointCloudRos() = default;
 
@@ -481,9 +487,14 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_;
 #ifdef ENABLE_IMU_DATA_PARSE
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
   bool imu_ned_frame_ = false;  // 是否将 IMU 原始 NED 轴翻转为 ROS FLU。
+  bool publish_imu_tf_ = false;
+  bool imu_tf_sent_ = false;
+  std::string imu_frame_id_;
+  std::string imu_tf_frame_id_;
 #endif
-  std::string frame_id_;
+  std::string lidar_frame_id_;
   bool send_by_rows_;
 };
 
@@ -497,8 +508,10 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   if (dense_points)
     send_by_rows_ = false;
 
-  yamlRead<std::string>(config["ros"], 
-      "ros_frame_id", frame_id_, "rslidar");
+  if (!yamlRead<std::string>(config["ros"], "ros_lidar_frame_id", lidar_frame_id_, ""))
+  {
+    yamlRead<std::string>(config["ros"], "ros_frame_id", lidar_frame_id_, "rslidar");
+  }
 
   std::string ros_send_topic;
   yamlRead<std::string>(config["ros"], 
@@ -537,22 +550,52 @@ inline void DestinationPointCloudRos::init(const YAML::Node& config)
   imu_pub_ = node_ptr_->create_publisher<sensor_msgs::msg::Imu>(ros_send_imu_data_topic, 1000);
   std::string lidar_type;
   yamlRead<std::string>(config["driver"], "lidar_type", lidar_type, "");
-  // 默认保持历史行为：Airy/E1 内置 IMU 按 NED->FLU 翻转；可由配置显式关闭，
-  // 以便下游直接使用 DIFOP 中 IMU->LiDAR 的完整外参。
-  const bool default_imu_ned_to_flu = (lidar_type == "RSAIRY" || lidar_type == "RSE1");
-  yamlRead<bool>(config["ros"], "ros_imu_ned_to_flu", imu_ned_frame_, default_imu_ned_to_flu);
+  yamlRead<std::string>(config["ros"], "ros_imu_frame_id", imu_frame_id_, lidar_frame_id_);
+  yamlRead<std::string>(config["ros"], "ros_imu_tf_frame_id", imu_tf_frame_id_, imu_frame_id_);
+  yamlRead<bool>(config["ros"], "ros_imu_ned_to_flu", imu_ned_frame_, false);
+  const bool default_publish_imu_tf = (lidar_type == "RSAIRY");
+  yamlRead<bool>(config["ros"], "ros_publish_imu_tf", publish_imu_tf_, default_publish_imu_tf);
+  if (publish_imu_tf_)
+  {
+    static_tf_broadcaster_.reset(new tf2_ros::StaticTransformBroadcaster(node_ptr_));
+  }
 #endif
 
 }
 
 inline void DestinationPointCloudRos::sendPointCloud(const LidarPointCloudMsg& msg)
 {
-  pub_->publish(toRosMsg(msg, frame_id_, send_by_rows_));
+  pub_->publish(toRosMsg(msg, lidar_frame_id_, send_by_rows_));
 }
 #ifdef ENABLE_IMU_DATA_PARSE
 inline void DestinationPointCloudRos::sendImuData(const std::shared_ptr<ImuData> & data)
 {
-  imu_pub_->publish(toRosMsg(data, frame_id_, imu_ned_frame_));
+  imu_pub_->publish(toRosMsg(data, imu_frame_id_, imu_ned_frame_));
+}
+
+inline void DestinationPointCloudRos::sendImuTransform(const DeviceInfo& info)
+{
+  if (!publish_imu_tf_ || imu_tf_sent_ || !static_tf_broadcaster_)
+  {
+    return;
+  }
+
+  const auto transform = lidarToPublishedImuTransformFromDifop(info, imu_ned_frame_);
+
+  geometry_msgs::msg::TransformStamped tf_msg;
+  tf_msg.header.stamp = node_ptr_->now();
+  tf_msg.header.frame_id = lidar_frame_id_;
+  tf_msg.child_frame_id = imu_tf_frame_id_;
+  tf_msg.transform.translation.x = transform.translation.x;
+  tf_msg.transform.translation.y = transform.translation.y;
+  tf_msg.transform.translation.z = transform.translation.z;
+  tf_msg.transform.rotation.x = transform.rotation.x;
+  tf_msg.transform.rotation.y = transform.rotation.y;
+  tf_msg.transform.rotation.z = transform.rotation.z;
+  tf_msg.transform.rotation.w = transform.rotation.w;
+
+  static_tf_broadcaster_->sendTransform(tf_msg);
+  imu_tf_sent_ = true;
 }
 #endif
 }  // namespace lidar

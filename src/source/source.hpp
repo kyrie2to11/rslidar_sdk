@@ -34,7 +34,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "msg/rs_msg/lidar_point_cloud_msg.hpp"
 #include "utility/yaml_reader.hpp"
+#include <cstdint>
 #include <rs_driver/msg/packet.hpp>
+#include <rs_driver/driver/driver_param.hpp>
 
 
 namespace robosense
@@ -53,6 +55,7 @@ public:
   virtual void sendPointCloud(const LidarPointCloudMsg& msg) = 0;
 #ifdef ENABLE_IMU_DATA_PARSE
   virtual void sendImuData(const std::shared_ptr<ImuData>& msg) = 0;
+  virtual void sendImuTransform(const DeviceInfo& info) {}
 #endif
   virtual ~DestinationPointCloud() = default;
 };
@@ -95,6 +98,7 @@ protected:
   void sendPointCloud(std::shared_ptr<LidarPointCloudMsg> msg);
 #ifdef ENABLE_IMU_DATA_PARSE
   void sendImuData(const std::shared_ptr<ImuData>& msg);
+  void sendImuTransform(const DeviceInfo& info);
 #endif
   SourceType src_type_;
   std::vector<DestinationPointCloud::Ptr> pc_cb_vec_;
@@ -138,6 +142,14 @@ inline void Source::sendImuData(const std::shared_ptr<ImuData>& msg)
   for (auto iter : pc_cb_vec_)
   {
     iter->sendImuData(msg);
+  }
+}
+
+inline void Source::sendImuTransform(const DeviceInfo& info)
+{
+  for (auto iter : pc_cb_vec_)
+  {
+    iter->sendImuTransform(info);
   }
 }
 #endif
